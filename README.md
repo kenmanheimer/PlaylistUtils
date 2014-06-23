@@ -4,7 +4,7 @@ PlaylistUtils
 Miscellaneous music playlist utilities
 
 * **GoogleMusic**
-  * ***PlaylistsCuller*** - Remove duplicate playlist items.
+  * ***PlaylistsCuller.py*** - Remove duplicate playlist items.
 
     Remove Google Music playlist duplicate items.
 
