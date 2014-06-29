@@ -8,22 +8,29 @@ We depend on gmusicapi being installed:
 """
 
 STASH_PATH = "~/.playlistsculler"
+# DRY_RUN True means prospective playlist removals are only reported, not done.
+DRY_RUN = True
 
 from gmusicapi import Mobileclient
 from getpass import getpass
 import json
-import sys, os
+import sys, os, logging, pprint
 from os import path
+from copy import copy
+from datetime import datetime
 
 class PlaylistsCuller:
     """Cull duplicate track entries from Google Music account's playlists."""
 
     _api = None                 # The GMusic API instance
     _userId = None
-    _plcontents = None          # _api.get_all_user_playlist_contents() result
-    _pllsts_dups = None         # {plylistId: {songId: [plEntryId, ...]}}
-    # _songs_by_id is optional, used just for sanity check:
+    _playlists = None           # _api.get_all_user_playlist_contents() result
+    _pldups = None              # {plylistId: {songId: [plEntryId, ...]}}
+    # optional _songs_by_id, only for sanity check:
     _songs_by_id = None         # {songId: songMetadata, ...}
+    _chosen = {}                # {plId: {songId: trackId}}
+    _history = None
+    tallies = {}
 
     def __init__(self, userId=None, password=None):
         if (not userId):
@@ -37,12 +44,102 @@ class PlaylistsCuller:
         if (not api.login(userId, password)):
             api.logger.error("Login failed")
             raise StandardError("Login failed")
-        self._pllsts_dups = {}
+        self._pldups = {}
+
+    def process(self):
+        if DRY_RUN:
+            print("DRY_RUN - playlist removals inhibited")
+        self.fetch_stash()
+        self.sort_playlists_contents()
+        self.do_tally('pre')
+        self.do_cull()
+        self.do_tally('post')
+        self.store_stash()
+        self.do_report()
+
+    def do_cull(self):
+        """Remove playlist's duplicate tracks.
+
+        Prefer to keep track, among duplicates, that has been kept previously.
+        """
+        did = 0
+        total = len(self._pldups)
+        for plId, pldups in self._pldups.items():
+            if not did % 100:
+                print "did", did, "of", total
+            did += 1
+            for songId, entries in pldups.items():
+                choice = self.get_chosen(plId, songId)
+                if len(entries) > 1:
+                    if choice and (choice in entries):
+                        entries.remove(choice)
+                    else:
+                        choice = entries.pop()
+                    # Remove remaining entries:
+                    if DRY_RUN:
+                        residue = entries
+                        #print ("Playlist %s song %s: %d removals pending"
+                        #       % (plId, songId, len(entries)))
+                        #residue = entries
+                    else:
+                        removed = self._api.remove_entries_from_playlist(
+                            entries)
+                        if len(removed) != len(entries):
+                            residue = [i for i in entries
+                                       if i not in set(removed)]
+                        else:
+                            residue = []
+                    if residue:
+                        if not DRY_RUN:
+                            self._api.logger.warning(
+                                "Playlist %s song %s:"
+                                " only %d remain for %d requested"
+                                % (plId, songId, len(residue),len(entries)))
+                        residue.insert(0, choice)
+                    else:
+                        residue = [choice]
+                    self._pldups[plId][songId] = residue
+                elif entries:
+                    choice = entries[0]
+                if choice:
+                    # Register choice whether or not any removals happened -
+                    # duplicates may be present next time we run, and we
+                    # specifically want to prefer oldest/most stable one.
+                    self.register_chosen(plId, songId, choice)
+
+    def get_chosen(self, plId, songId):
+        "Return preferred track for playlist plId and song songId, or None."
+        if (self._chosen.has_key(plId)
+            and self._chosen[plId].has_key(songId)):
+            return self._chosen[plId][songId]
+        else:
+            return None
+    def register_chosen(self, plId, songId, trackId):
+        """Register trackId as choice for playlist plId and song songId."""
+        if self._chosen.has_key(plId):
+            self._chosen[plId][songId] = trackId
+        else:
+            self._chosen[plId] = {songId: trackId}
+
+    def do_report(self):
+        pprint.pprint({'pre': self.tallies['pre']})
+        pprint.pprint({'post': self.tallies['post']})
+
+    def fetch_stash(self):
+        fetched = Stasher(STASH_PATH).fetch_stash() or {'chosen': {},
+                                                        'history': []}
+        self._history = fetched['history']
+        self._chosen = fetched['chosen']
+    def store_stash(self):
+        self._history.insert(0, (str(datetime.now()), self.tallies))
+        Stasher(STASH_PATH).store_stash({'chosen': self._chosen,
+                                         'history': self._history})
 
     def get_playlists(self):
-        if (not self._plcontents):
+        """Populate self._playlists w/api get_all_user_playlist_contents()."""
+        if (not self._playlists):
             print "Getting playlists... "
-            self._plcontents = self._api.get_all_user_playlist_contents()
+            self._playlists = self._api.get_all_user_playlist_contents()
             print " Done."
 
     def get_songs(self):
@@ -56,17 +153,35 @@ class PlaylistsCuller:
             print " Done."
 
     def sort_playlists_contents(self):
-        if (not self._plcontents):
-            self.get_playlists_contents()
-            for pl in self._plcontents:
+        if (not self._playlists):
+            self.get_playlists()
+            for pl in self._playlists:
                 plid = pl[u'id']
-                plduptracks = self._pllsts_dups[plid] = {}
+                trackdups = self._pldups[plid] = {}
                 for track in pl[u'tracks']:
                     trid = track[u'trackId']
-                    if plduptracks.has_key(trid):
-                        plduptracks[trid].append(track[u'id'])
+                    if trackdups.has_key(trid):
+                        trackdups[trid].append(track[u'id'])
                     else:
-                        plduptracks[trid] = [track[u'id']]
+                        trackdups[trid] = [track[u'id']]
+
+    def do_tally(self, which):
+        """Fill tally named 'which' with current playlist number, dup stats.
+
+        Depends on self.sort_playlists_contents() having been called."""
+
+        tally = self.tallies[which] = {'playlists': 0,
+                                       'playlist_tracks': 0,
+                                       'playlists_with_dups': 0,
+                                       'dups': 0}
+        tally['playlists'] = len(self._playlists)
+        for pl in self._playlists:
+            plid = pl[u'id']
+            tally['playlist_tracks'] += len(pl[u'tracks'])
+            num_dups = len(self._pldups[plid])
+            if num_dups > 1:
+                tally['playlists_with_dups'] += 1
+                tally['dups'] += num_dups
 
     def sanity_check(self):
         """Examine the data to confirm or expose mistaken assumptions."""
@@ -74,13 +189,13 @@ class PlaylistsCuller:
         # All playlists are of kind u'sj#playlist':
         print "Confirming expected user playlists types..."
         self.get_playlists()
-        for pl in self._plcontents:
+        for pl in self._playlists:
             assert pl[u'kind'] == u'sj#playlist'
 
         # Every track id in plists_dups is a key in self._songs_by_id:
         print "Confirming all playlist tracks are valid song ids..."
         self.get_songs()
-        for apl_dups in self._pllsts_dups.values():
+        for apl_dups in self._pldups.values():
             for trid in apl_dups.keys():
                 assert self._songs_by_id.has_key(trid)
 
@@ -103,7 +218,7 @@ class Stasher:
         finally:
             sf and sf.close()
             return got
-    def dump_stash(self, data):
+    def store_stash(self, data):
         """Try to externalize the data in the stash path.
 
         We pass the exception if the write fails."""
@@ -123,3 +238,7 @@ def incr_getter(generator):
         sys.stdout.flush()
     print
     return got
+
+if __name__ == "__main__":
+    they = PlaylistsCuller()    # Will prompt for username and pw
+    they.process()
