@@ -7,7 +7,7 @@ We depend on gmusicapi being installed:
     https://github.com/simon-weber/Unofficial-Google-Music-API
 """
 
-STASH_PATH = "~/.playlistsculler"
+STASH_PATH = "~/.playlistsculler.json"
 # VERBOSE: say much of what's happening while it's happening.
 VERBOSE = True
 # DRY_RUN True means prospective playlist removals are only reported, not done.
@@ -52,25 +52,30 @@ class PlaylistsCuller:
         if DRY_RUN:
             print("DRY_RUN - playlist removals inhibited")
         self.fetch_stash()
-        self.sort_playlists_contents()
+        self.arrange_playlists_contents()
         self.do_tally('pre')
-        self.do_cull()
-        self.do_tally('post')
-        self.store_stash()
-        self.do_report()
+        try:
+            self.do_cull()
+        finally:
+            self.do_tally('post')
+            if not DRY_RUN:
+                self.store_stash()
+            self.do_report()
 
     def do_cull(self):
         """Remove playlist's duplicate tracks.
 
         Prefer to keep track, among duplicates, that has been kept previously.
         """
-        did = 0
+        doingpl = doingsong = 0
         total = len(self._pldups)
         for plId, pldups in self._pldups.items():
-            if not did % 100:
-                blather("did %d of %d" % (did, total))
-            did += 1
+            if not doingpl % 100:
+                blather("did %d of %d" % (doingpl, total))
+            doingpl += 1
+            doingsong = 0
             for songId, entries in pldups.items():
+                doingsong += 1
                 choice = self.get_chosen(plId, songId)
                 if len(entries) > 1:
                     if choice and (choice in entries):
@@ -83,8 +88,8 @@ class PlaylistsCuller:
                         #blather("Playlist %s song %s: %d removals pending"
                         #        % (plId, songId, len(entries)))
                     else:
-                        blather("%d: Removing %d tracks..."
-                                % (did, len(entries)))
+                        blather("Pl %d, S %d: Removing %d tracks..."
+                                % (doingpl, doingsong, len(entries)))
                         removed = self._api.remove_entries_from_playlist(
                             entries)
                         if len(removed) != len(entries):
@@ -101,6 +106,7 @@ class PlaylistsCuller:
                         residue.insert(0, choice)
                     else:
                         residue = [choice]
+                    # Revise our records to reflect removals:
                     self._pldups[plId][songId] = residue
                 elif entries:
                     choice = entries[0]
@@ -155,23 +161,23 @@ class PlaylistsCuller:
             self._songs_by_id = {song[u'id']: song for song in songs}
             blather(" Done.")
 
-    def sort_playlists_contents(self):
+    def arrange_playlists_contents(self):
         if (not self._playlists):
             self.get_playlists()
-            for pl in self._playlists:
-                plid = pl[u'id']
-                trackdups = self._pldups[plid] = {}
-                for track in pl[u'tracks']:
-                    trid = track[u'trackId']
-                    if trackdups.has_key(trid):
-                        trackdups[trid].append(track[u'id'])
-                    else:
-                        trackdups[trid] = [track[u'id']]
+        for pl in self._playlists:
+            plid = pl[u'id']
+            trackdups = self._pldups[plid] = {}
+            for track in pl[u'tracks']:
+                trid = track[u'trackId']
+                if trackdups.has_key(trid):
+                    trackdups[trid].append(track[u'id'])
+                else:
+                    trackdups[trid] = [track[u'id']]
 
     def do_tally(self, which):
         """Fill tally named 'which' with current playlist number, dup stats.
 
-        Depends on self.sort_playlists_contents() having been called."""
+        Depends on self.arrange_playlists_contents() having been called."""
 
         tally = self.tallies[which] = {'playlists': 0,
                                        'playlist_tracks': 0,
@@ -181,7 +187,8 @@ class PlaylistsCuller:
         for pl in self._playlists:
             plid = pl[u'id']
             tally['playlist_tracks'] += len(pl[u'tracks'])
-            num_dups = len(self._pldups[plid])
+            num_dups = sum([(len(x) - 1)
+                            for x in self._pldups[plid].values()])
             if num_dups > 1:
                 tally['playlists_with_dups'] += 1
                 tally['dups'] += num_dups
@@ -228,7 +235,7 @@ class Stasher:
         sf = None
         try:
             sf = open(self._stash_path, 'w')
-            json.dump(data, sf)
+            json.dump(data, sf, indent=1, separators=(',', ': '))
         finally:
             sf and sf.close()
 
