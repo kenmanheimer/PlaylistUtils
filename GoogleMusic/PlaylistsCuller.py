@@ -8,6 +8,8 @@ We depend on gmusicapi being installed:
 """
 
 STASH_PATH = "~/.playlistsculler"
+# VERBOSE: say much of what's happening while it's happening.
+VERBOSE = True
 # DRY_RUN True means prospective playlist removals are only reported, not done.
 DRY_RUN = True
 
@@ -66,7 +68,7 @@ class PlaylistsCuller:
         total = len(self._pldups)
         for plId, pldups in self._pldups.items():
             if not did % 100:
-                print "did", did, "of", total
+                blather("did %d of %d" % (did, total))
             did += 1
             for songId, entries in pldups.items():
                 choice = self.get_chosen(plId, songId)
@@ -78,10 +80,11 @@ class PlaylistsCuller:
                     # Remove remaining entries:
                     if DRY_RUN:
                         residue = entries
-                        #print ("Playlist %s song %s: %d removals pending"
-                        #       % (plId, songId, len(entries)))
-                        #residue = entries
+                        #blather("Playlist %s song %s: %d removals pending"
+                        #        % (plId, songId, len(entries)))
                     else:
+                        blather("%d: Removing %d tracks..."
+                                % (did, len(entries)))
                         removed = self._api.remove_entries_from_playlist(
                             entries)
                         if len(removed) != len(entries):
@@ -138,19 +141,19 @@ class PlaylistsCuller:
     def get_playlists(self):
         """Populate self._playlists w/api get_all_user_playlist_contents()."""
         if (not self._playlists):
-            print "Getting playlists... "
+            blather("Getting playlists... ")
             self._playlists = self._api.get_all_user_playlist_contents()
-            print " Done."
+            blather(" Done.")
 
     def get_songs(self):
         """Get all songs in self._songs_by_id
 
         This is optional, just for sanity check."""
         if (not self._songs_by_id):
-            print "Getting songs..."
+            blather("Getting songs...")
             songs = incr_getter(self._api.get_all_songs(incremental=True))
             self._songs_by_id = {song[u'id']: song for song in songs}
-            print " Done."
+            blather(" Done.")
 
     def sort_playlists_contents(self):
         if (not self._playlists):
@@ -187,13 +190,13 @@ class PlaylistsCuller:
         """Examine the data to confirm or expose mistaken assumptions."""
 
         # All playlists are of kind u'sj#playlist':
-        print "Confirming expected user playlists types..."
+        blather("Confirming expected user playlists types...")
         self.get_playlists()
         for pl in self._playlists:
             assert pl[u'kind'] == u'sj#playlist'
 
         # Every track id in plists_dups is a key in self._songs_by_id:
-        print "Confirming all playlist tracks are valid song ids..."
+        blather("Confirming all playlist tracks are valid song ids...")
         self.get_songs()
         for apl_dups in self._pldups.values():
             for trid in apl_dups.keys():
@@ -236,8 +239,12 @@ def incr_getter(generator):
         got += batch
         sys.stdout.write("%d " % len(got))
         sys.stdout.flush()
-    print
     return got
+
+def blather(msg):
+    "Print message if in verbose mode."
+    if VERBOSE:
+        print(msg)
 
 if __name__ == "__main__":
     they = PlaylistsCuller()    # Will prompt for username and pw
