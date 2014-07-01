@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """Remove duplicate song entries in all your GMusic playlists.
 
 We require on gmusicapi being installed in the python running the script:
@@ -85,18 +87,21 @@ class PlaylistsCuller:
         self.do_tally('pre')
         blather("Pre-cull:")
         blather(pprint.pformat(self.tallies['pre']))
-        try:
-            self.do_cull()
-        finally:
-            # Re-fetch the playlists from the server:
-            self.arrange_playlists_contents(reset=True)
-            # Preserve and present reflect incremental progress, whether or not
-            # we completed:
-            self.do_tally('post')
-            blather("Post-cull:")
-            blather(pprint.pformat(self.tallies['post']))
-            if not DRY_RUN:
-                self.store_stash()
+        if self.tallies['pre']['dups'] == 0:
+            blather("No dups, nothing to do.")
+        else:
+            try:
+                self.do_cull()
+            finally:
+                # Re-fetch the playlists from the server:
+                self.arrange_playlists_contents(reset=True)
+                # Preserve and present reflect incremental progress, whether
+                # or not we completed:
+                self.do_tally('post')
+                blather("Post-cull:")
+                blather(pprint.pformat(self.tallies['post']))
+                if not DRY_RUN:
+                    self.store_stash()
 
     def do_cull(self):
         """Remove playlist's duplicate tracks.
