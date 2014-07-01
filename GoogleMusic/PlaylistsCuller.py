@@ -83,15 +83,20 @@ class PlaylistsCuller:
         self.fetch_stash()
         self.arrange_playlists_contents()
         self.do_tally('pre')
+        blather("Pre-cull:")
+        blather(pprint.pformat(self.tallies['pre']))
         try:
             self.do_cull()
         finally:
+            # Re-fetch the playlists from the server:
+            self.arrange_playlists_contents(reset=True)
             # Preserve and present reflect incremental progress, whether or not
             # we completed:
             self.do_tally('post')
+            blather("Post-cull:")
+            blather(pprint.pformat(self.tallies['post']))
             if not DRY_RUN:
                 self.store_stash()
-            self.do_report()
 
     def do_cull(self):
         """Remove playlist's duplicate tracks.
@@ -150,10 +155,6 @@ class PlaylistsCuller:
         else:
             self._chosen[plId] = {songId: trackId}
 
-    def do_report(self):
-        pprint.pprint({'pre': self.tallies['pre']})
-        pprint.pprint({'post': self.tallies['post']})
-
     def fetch_stash(self):
         fetched = Stasher(STASH_PATH).fetch_stash() or {'chosen': {},
                                                         'history': []}
@@ -164,9 +165,9 @@ class PlaylistsCuller:
         Stasher(STASH_PATH).store_stash({'chosen': self._chosen,
                                          'history': self._history})
 
-    def get_playlists(self):
+    def get_playlists(self, reset=False):
         """Populate self._playlists w/api get_all_user_playlist_contents()."""
-        if (not self._playlists):
+        if reset or (not self._playlists):
             blather("Getting playlists... ")
             self._playlists = self._api.get_all_user_playlist_contents()
             blather(" Done.")
@@ -181,9 +182,8 @@ class PlaylistsCuller:
             self._songs_by_id = {song[u'id']: song for song in songs}
             blather(" Done.")
 
-    def arrange_playlists_contents(self):
-        if (not self._playlists):
-            self.get_playlists()
+    def arrange_playlists_contents(self, reset=False):
+        self.get_playlists(reset)
         self._plnames_by_id = {}
         self._pldups = {}
         for pl in self._playlists:
@@ -325,5 +325,5 @@ def blather(msg, nonewline=False):
             print(msg)
 
 if __name__ == "__main__":
-    they = PlaylistsCuller()    # Will prompt for username and pw
-    they.process()
+    pls = PlaylistsCuller()    # Will prompt for username and pw
+    pls.process()
