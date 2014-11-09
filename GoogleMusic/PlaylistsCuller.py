@@ -69,19 +69,21 @@ class PlaylistsCuller:
         if (not userId):
             print "UserId: ",
             userId = sys.stdin.readline().strip()
-            self._userId = userId
             password = password or getpass("%s password: " % userId)
+        self._userId = userId
         self._api = api = Mobileclient(debug_logging=True,
                                        validate=True,
                                        verify_ssl=True)
-        if (not api.login(userId, password)):
-            api.logger.error("Login failed")
-            raise StandardError("Login failed")
+        if not api.login(userId, password):
+            api.logger.error("Authentication failed")
+            raise StandardError("Authentication failed")
         self._pldups = {}
 
     def process(self):
         if DRY_RUN:
             print("DRY_RUN - playlist removals inhibited")
+        # Get playlists, depending on freshness check for economy:
+        self.get_playlists()
         self.fetch_stash()
         self.arrange_playlists_contents()
         self.do_tally('pre')
@@ -93,8 +95,9 @@ class PlaylistsCuller:
             try:
                 self.do_cull()
             finally:
-                # Re-fetch the playlists from the server:
-                self.arrange_playlists_contents(reset=True)
+                # Re-fetch the playlists from the server, if any are modified:
+                self.get_playlists(refresh=True)
+                self.arrange_playlists_contents()
                 # Preserve and present reflect incremental progress, whether
                 # or not we completed:
                 self.do_tally('post')
@@ -114,7 +117,7 @@ class PlaylistsCuller:
 
         doingpl = doingsong = 0
         playlists = self._playlists
-        total = len(self._pldups)
+        removed = 0
         for plId, pldups in self._pldups.items():
             doingpl += 1
             plname = self._plnames_by_id[plId]
@@ -127,12 +130,12 @@ class PlaylistsCuller:
                     if choice and (choice in entries):
                         entries.remove(choice)
                         if len(entries) == 1:
-                            # Make the new item the choice, instead - since
-                            # the previous choice is apparently not better:
+                            # Try new preferred choice - old wassn't effective:
                             choice, entries = entries[0], [choice]
                     else:
                         choice = entries.pop(0)
                     # Remove remaining entries:
+                    removed += len(entries)
                     batcher.batch_entries(entries)
                     # Revise our records assuming the removals succeeded:
                     #XXX self._pldups[plId][songId] = [choice]
@@ -144,7 +147,7 @@ class PlaylistsCuller:
                     # specifically want to prefer oldest/most stable one.
                     self.register_chosen(plId, songId, choice)
             batcher.finish_batch()
-        blather("%s playlists processed." % doingpl)
+        blather("%s playlists processed, %d removals." % (doingpl, removed))
 
     def get_chosen(self, plId, songId):
         "Return preferred track for playlist plId and song songId, or None."
@@ -170,12 +173,40 @@ class PlaylistsCuller:
         Stasher(STASH_PATH).store_stash({'chosen': self._chosen,
                                          'history': self._history})
 
-    def get_playlists(self, reset=False):
-        """Populate self._playlists w/api get_all_user_playlist_contents()."""
-        if reset or (not self._playlists):
-            blather("Getting playlists... ")
+    def get_playlists(self, refresh=False):
+        """Populate self._playlists, including tracks.
+
+        We avoid unnecessary call to API's exhaustive
+        .get_all_user_playlist_contents()' by checking '.get_all_playlists()'
+        to compare lastModifiedTimestamp against previous fetch, if any."""
+        # We already know a full fetch is needed if we have no prior:
+        needed = not self._playlists or refresh
+        if not needed:
+            # Compare timestamps against brief (sans tracks) current report.
+            blather("Fetching compact data to compare timestamps... ",
+                    True)
+            compact = incr_getter(
+                self._api.get_all_playlists(incremental=True))
+            blather("...")
+            lastmods = {x['id']: x['lastModifiedTimestamp'] for x in compact}
+            if len(lastmods) != len(self._playlists):
+                needed = True
+            else:
+                for pl in self._playlists:
+                    if (not lastmods.has_key(pl['id'])
+                        or (pl['lastModifiedTimestamp'] !=
+                            lastmods[pl['id']])):
+                        needed = True
+                        break
+            if needed:
+                blather("Discrepancies found,"
+                        " proceeding with exhaustive fetch.")
+        if needed:
+            blather("...getting playlists... ")
             self._playlists = self._api.get_all_user_playlist_contents()
-            blather(" Done.")
+            blather("... Done.")
+        else:
+            blather("Previously fetched data is already up-to-date.")
 
     def get_songs(self):
         """Get all songs in self._songs_by_id
@@ -187,8 +218,7 @@ class PlaylistsCuller:
             self._songs_by_id = {song[u'id']: song for song in songs}
             blather(" Done.")
 
-    def arrange_playlists_contents(self, reset=False):
-        self.get_playlists(reset)
+    def arrange_playlists_contents(self):
         self._plnames_by_id = {}
         self._pldups = {}
         for pl in self._playlists:
@@ -246,6 +276,8 @@ class BatchedRemover:
         self.plnum = plnum
         self.batch_size = batch_size
         self.entries = []
+        self.num_removals = 0
+        self.num_fails = 0
     def batch_entries(self, entries):
         if not self.emitted:
             blather("Playlist #%d: %s" % (self.plnum, self.plname))
@@ -262,17 +294,24 @@ class BatchedRemover:
     def finish_batch(self):
         pendings, self.entries = self.entries, []
         self.do_removals(pendings)
+        if self.num_removals and self.num_removals > self.batch_size:
+            message = format(" %d" % self.num_removals)
+            if self.num_fails:
+                message += format(", %d fails" % self.num_fails)
+            blather(message)
     def do_removals(self, entries):
         if entries:
             eqls = "= %d" % len(entries)
             if self.entries:
                 eqls += " + %d" % len(self.entries)
+            self.num_removals += len(entries)
             if DRY_RUN:
                 blather("would" + eqls)
             else:
                 removed = self.api.remove_entries_from_playlist(entries)
                 if len(removed) != len(entries):
                     diff = len(entries) - len(removed)
+                    self.num_fails += diff
                     self.api.logger.warning("Playlist %s: %d removals failed"
                                             % (self.plname, diff))
                     blather("%s - %d missed" % (eqls, len(entries), diff))
@@ -282,11 +321,10 @@ class BatchedRemover:
                 blather("%d " % len(self.entries), nonewline=True)
 
 class Stasher:
+    """Provide JSON externalization of a data structure to a location."""
     _stash_path = None
     def __init__(self, stash_path):
-        """Provide JSON externalization of a data structure to a location.
-
-        The location can include '~' and var references.
+        """Stash location can include '~' and var references.
 
         Invalid paths will not be noticed until a write is attempted."""
         self._stash_path = path.expanduser(path.expandvars(stash_path))
@@ -328,6 +366,17 @@ def blather(msg, nonewline=False):
             sys.stdout.flush()
         else:
             print(msg)
+
+def migrate_version(culler, password):
+    """Return a new culler, from the reloaded module, with culler's data.
+
+    WON'T WORK when running this module as a script."""
+    reload(sys.modules[__name__])
+    newculler = PlaylistsCuller(culler._userId, password)
+    for field in ['_playlists', '_pldups', '_songs_by_id',
+                  '_chosen', '_history']:
+        setattr(newculler, field, getattr(culler, field))
+    return newculler
 
 if __name__ == "__main__":
     pls = PlaylistsCuller()    # Will prompt for username and pw
