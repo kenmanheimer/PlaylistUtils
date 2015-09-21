@@ -69,12 +69,13 @@ class PlaylistsCuller:
         if (not userId):
             print "UserId: ",
             userId = sys.stdin.readline().strip()
-            password = password or getpass("%s password: " % userId)
+        if (not password):
+            password = getpass("%s password: " % userId)
         self._userId = userId
         self._api = api = Mobileclient(debug_logging=True,
                                        validate=True,
                                        verify_ssl=True)
-        if not api.login(userId, password):
+        if not api.login(userId, password, Mobileclient.FROM_MAC_ADDRESS):
             api.logger.error("Authentication failed")
             raise StandardError("Authentication failed")
         self._pldups = {}
