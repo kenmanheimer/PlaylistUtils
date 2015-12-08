@@ -12,17 +12,20 @@ Miscellaneous music playlist utilities
     going to update when it's ready.
 
     I use Google Music Manager to sync my iTunes playlists to Google Music,
-    and there's a serious problem with it. It perpetually duplicates items
-    in my playlists, to the point where the Google Music versions of all my
-    lists are 8 to 10 times the size of my original iTunes lists.
+    and have always experienced an odd and serious problem with it. Almost
+    any time I add new, non-duplicate items to my iTunes playlists, seeming
+    random, already existing items on the playlists are duplicated. After a
+    while, not realizing this was happening, I had accumulated lists that
+    were bulked with duplicates to 10 to 20 times their actual size. So my
+    hundred and fifty or two hundred playlists, which amounted to ten or
+    twenty thousand distinct entries, were mostly duplicates totally
+    hundreds of thousands of items!
 
-    This is a serious problem, because I have a lot of sizeable
-    playlists. It's untenable (and extremely aggravating) to even consider
-    culling the many thousands of duplicates by hand! But the massive
-    bulking slows down my Google music clients drastically, and ruins
-    sequencing in shuffle play, with so many duplicates to cull. This is
-    only compounded by the terrible UI accommodation for large playlists in
-    the design of the Google Play Music client.
+    The massive duplicates made the android versions of playlists
+    unusable. Even if the devices could handle the extra load, the UI is
+    horrible for navigating even small playlists, and totally useless for
+    finding items I wanted to listen too among the tens of thousands of
+    duplicates! Even worse, culling the duplicates by hand was untenable.
 
     Fortunately, there is the [Unofficial Google Music
     API](https://github.com/simon-weber/Unofficial-Google-Music-API), an
@@ -30,5 +33,6 @@ Miscellaneous music playlist utilities
     api, by which the duplicates can be automatically culled. That's what
     this script is for.
 
-    The script is a work in progress, near by not quite operational. I will
-    update when it's doing the job.
+    The script is a work in progress, working but with rough edges. It
+    continues to be necessary, though, because the random-duplication
+    problems continues to this day.
