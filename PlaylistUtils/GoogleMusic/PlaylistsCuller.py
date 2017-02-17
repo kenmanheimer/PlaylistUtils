@@ -30,8 +30,9 @@ duplicates:
 This choice juggling is an experiment. There may not be any stable choices.
 
 In order to track the previous chocies, we maintain a json stash file in
-'~/.playlistsculler.json' (configurable - see STASH_PATH).
+'~/.playlistsculler.json' (to change see STASH_PATH).
 
+(Warnings InsecurePlatformWarning and InsecureRequestWarning are common.)
 """
 
 
@@ -49,7 +50,7 @@ import json
 import sys, os, logging, pprint
 from os import path
 from copy import copy
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class PlaylistsCuller:
     """Cull duplicate track entries from Google Music account's playlists."""
@@ -111,14 +112,16 @@ class PlaylistsCuller:
         """Remove playlist's duplicate tracks.
 
         To reduce churn, we try to be clever about which track we keep. 
-        1. We prefer a choice we've seen before, in the hopes that it's stable.
+        1. We prefer a choice we've seen, in hope that it's stable.
         2. But if we have only the choice and one other item, try the other,
            in case it's better.
         It's likely there is a right choice, but worth probing for it."""
 
+        before = datetime.now()
         doingpl = doingsong = 0
         playlists = self._playlists
         removed = 0
+        num_changed = 0
         for plId, pldups in self._pldups.items():
             doingpl += 1
             plname = self._plnames_by_id[plId]
@@ -131,7 +134,7 @@ class PlaylistsCuller:
                     if choice and (choice in entries):
                         entries.remove(choice)
                         if len(entries) == 1:
-                            # Try new preferred choice - old wassn't effective:
+                            # Try new preferred choice, old wasn't effective:
                             choice, entries = entries[0], [choice]
                     else:
                         choice = entries.pop(0)
@@ -148,7 +151,11 @@ class PlaylistsCuller:
                     # specifically want to prefer oldest/most stable one.
                     self.register_chosen(plId, songId, choice)
             batcher.finish_batch()
-        blather("%s playlists processed, %d removals." % (doingpl, removed))
+            if doingsong != 0:
+                num_changed += 1
+        blather("%d tracks removed, over %d (of %d) playlists (%s elapsed)."
+                % (removed, num_changed, doingpl,
+                   elapsed_since_rounded(before)))
 
     def get_chosen(self, plId, songId):
         "Return preferred track for playlist plId and song songId, or None."
@@ -203,9 +210,10 @@ class PlaylistsCuller:
                 blather("Discrepancies found,"
                         " proceeding with exhaustive fetch.")
         if needed:
+            before = datetime.now()
             blather("...getting playlists... ")
             self._playlists = self._api.get_all_user_playlist_contents()
-            blather("... Done.")
+            blather("... Done (%s elapsed)." % elapsed_since_rounded(before))
         else:
             blather("Previously fetched data is already up-to-date.")
 
@@ -358,6 +366,11 @@ def incr_getter(generator):
         sys.stdout.write("%d " % len(got))
         sys.stdout.flush()
     return got
+
+def elapsed_since_rounded(dt):
+    """Return rough datetime delta since datetime DT."""
+    elapsed = datetime.now() - dt
+    return timedelta(seconds=round(elapsed.seconds, 0))
 
 def blather(msg, nonewline=False):
     "Print message if in verbose mode."
