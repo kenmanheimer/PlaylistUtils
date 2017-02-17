@@ -141,6 +141,7 @@ class PlaylistsCuller:
                     # Remove remaining entries:
                     removed += len(entries)
                     batcher.batch_entries(entries)
+                    num_changed += 1
                     # Revise our records assuming the removals succeeded:
                     #XXX self._pldups[plId][songId] = [choice]
                 elif entries:
@@ -151,8 +152,6 @@ class PlaylistsCuller:
                     # specifically want to prefer oldest/most stable one.
                     self.register_chosen(plId, songId, choice)
             batcher.finish_batch()
-            if doingsong != 0:
-                num_changed += 1
         blather("%d tracks removed, over %d (of %d) playlists (%s elapsed)."
                 % (removed, num_changed, doingpl,
                    elapsed_since_rounded(before)))
