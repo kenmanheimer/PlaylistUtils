@@ -112,7 +112,7 @@ class PlaylistsCuller:
         """Remove playlist's duplicate tracks.
 
         To reduce churn, we try to be clever about which track we keep. 
-        1. We prefer a choice we've seen, in hope that it's stable.
+        1. We prefer a choice we've seen, seeking one that lasts.
         2. But if we have only the choice and one other item, try the other,
            in case it's better.
         It's likely there is a right choice, but worth probing for it."""
@@ -121,7 +121,6 @@ class PlaylistsCuller:
         doingpl = doingsong = 0
         playlists = self._playlists
         removed = 0
-        num_changed = 0
         for plId, pldups in self._pldups.items():
             doingpl += 1
             plname = self._plnames_by_id[plId]
@@ -134,14 +133,13 @@ class PlaylistsCuller:
                     if choice and (choice in entries):
                         entries.remove(choice)
                         if len(entries) == 1:
-                            # Try new preferred choice, old wasn't effective:
+                            # Try new alternative - prior didn't last.
                             choice, entries = entries[0], [choice]
                     else:
                         choice = entries.pop(0)
                     # Remove remaining entries:
                     removed += len(entries)
                     batcher.batch_entries(entries)
-                    num_changed += 1
                     # Revise our records assuming the removals succeeded:
                     #XXX self._pldups[plId][songId] = [choice]
                 elif entries:
@@ -152,8 +150,8 @@ class PlaylistsCuller:
                     # specifically want to prefer oldest/most stable one.
                     self.register_chosen(plId, songId, choice)
             batcher.finish_batch()
-        blather("%d tracks removed, over %d (of %d) playlists (%s elapsed)."
-                % (removed, num_changed, doingpl,
+        blather("%d tracks removed, from %d lists of %d total (%s elapsed)."
+                % (removed, batcher.num_lists_changed, doingpl,
                    elapsed_since_rounded(before)))
 
     def get_chosen(self, plId, songId):
@@ -286,9 +284,15 @@ class BatchedRemover:
         self.entries = []
         self.num_removals = 0
         self.num_fails = 0
+        self._num_lists_changed = 0
+    @property
+    def num_lists_changed(self):
+        "Return the number of lists that have been changed so far."
+        return self._num_lists_changed
     def batch_entries(self, entries):
         if not self.emitted:
             blather("Playlist #%d: %s" % (self.plnum, self.plname))
+            self._num_lists_changed += 1
             self.emitted = True
         blather("%d " % len(entries), nonewline=True)
         pending = self.entries
