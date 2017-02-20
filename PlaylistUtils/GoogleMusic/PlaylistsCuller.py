@@ -32,7 +32,30 @@ This choice juggling is an experiment. There may not be any stable choices.
 In order to track the previous chocies, we maintain a json stash file in
 '~/.playlistsculler.json' (to change see STASH_PATH).
 
-(Warnings InsecurePlatformWarning and InsecureRequestWarning are common.)
+(InsecurePlatformWarning and InsecureRequestWarning warnings are common.)
+
+2017-02-20: The script recently stopped finding spurious duplicates.
+
+  About a week ago I did iTunes copy-to-play-order on most of my lists, and
+  since then I haven't been seeing duplicates, despite continuing to change
+  existing list contents, add new lists, and remove existing ones.
+
+  Today I did a visual scan of several lists, including ones that tended to
+  receive duplicates, and see none (visual scan being easier because they're
+  sorted).
+
+  This recent batch of script changes accompanied running the script after
+  a moritorium of a few (several?) months, intending to deliberately
+  accumulate duplicates and maybe then report the problem. Not being sure
+  where to report, and starting to be frustrated by duplicates, I ran the
+  script and it removed over a thousand dups on the first run. Tweaking my
+  lists and tweaking the script, then running it, continued to get many dups
+  on many iterations - until the recent nearly comprehensive
+  copy-to-play-order. Then, no more dups that the script or I can find. 
+
+  Maybe the problem is no longer happening to my collection - after
+  many years of it being rampant?
+
 """
 
 
