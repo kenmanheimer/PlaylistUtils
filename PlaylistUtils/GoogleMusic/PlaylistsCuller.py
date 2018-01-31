@@ -40,6 +40,7 @@ In order to track the previous chocies, we maintain a json stash file in
 
 
 STASH_PATH = "~/.playlistsculler.json"
+STASH_LISTING_PATH = "~/.playlistsculler.lists"
 # Batch removal requests to this:
 DEFAULT_BATCH_SIZE = 100
 # VERBOSE: say much of what's happening while it's happening.
