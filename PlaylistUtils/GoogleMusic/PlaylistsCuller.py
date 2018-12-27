@@ -116,8 +116,8 @@ class PlaylistsCuller:
     def do_cull(self):
         """Remove playlist's duplicate tracks.
 
-        To reduce churn, we try to be clever about which track we keep. 
-        1. We prefer a choice we've seen, seeking one that lasts.
+        To reduce churn, we try to be clever about which track we keep.
+        1. We prefer a choice we've seen before, supposing that it's stable.
         2. But if we have only the choice and one other item, try the other,
            in case it's better.
         It's likely there is a right choice, but worth probing for it."""
