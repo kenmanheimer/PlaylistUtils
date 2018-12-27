@@ -32,11 +32,13 @@ This choice juggling is an experiment. There may not be any stable choices.
 In order to track the previous chocies, we maintain a json stash file in
 '~/.playlistsculler.json' (to change see STASH_PATH).
 
-(InsecurePlatformWarning and InsecureRequestWarning warnings are common.)
+During operation you might see warnings with InsecurePlatformWarning and
+InsecureRequestWarning mentioned. Answers to this stackoverflow question
+mitigate them:
+
+https://stackoverflow.com/questions/29134512/insecureplatformwarning-a-true-sslcontext-object-is-not-available-this-prevent
 
 2018-12-27: Operation under Python 3 appears to be much faster.
-2017-02-20: Spurious duplicates may have stopped for about about a week,
-            but I noticed them happening again on the 23rd.
 """
 
 
