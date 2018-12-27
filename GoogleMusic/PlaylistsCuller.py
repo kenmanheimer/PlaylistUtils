@@ -67,7 +67,7 @@ class PlaylistsCuller:
 
     def __init__(self, userId=None, password=None):
         if (not userId):
-            print "UserId: ",
+            print("UserId: ",)
             userId = sys.stdin.readline().strip()
         if (not password):
             password = getpass("%s password: " % userId)
@@ -194,7 +194,7 @@ class PlaylistsCuller:
                 needed = True
             else:
                 for pl in self._playlists:
-                    if (not lastmods.has_key(pl['id'])
+                    if (not pl['id'] in lastmods
                         or (pl['lastModifiedTimestamp'] !=
                             lastmods[pl['id']])):
                         needed = True
@@ -228,7 +228,7 @@ class PlaylistsCuller:
             self._plnames_by_id[plId] = pl[u'name']
             for track in pl[u'tracks']:
                 trId = track[u'trackId']
-                if trackdups.has_key(trId):
+                if trId in trackdups:
                     trackdups[trId].append(track[u'id'])
                 else:
                     trackdups[trId] = [track[u'id']]
@@ -266,7 +266,7 @@ class PlaylistsCuller:
         self.get_songs()
         for apl_dups in self._pldups.values():
             for trId in apl_dups.keys():
-                assert self._songs_by_id.has_key(trId)
+                assert trId in self._songs_by_id
 
 class BatchedRemover:
     """Batch playlist entry removal requests to reduce transactions."""
