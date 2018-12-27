@@ -30,8 +30,9 @@ duplicates:
 This choice juggling is an experiment. There may not be any stable choices.
 
 In order to track the previous chocies, we maintain a json stash file in
-'~/.playlistsculler.json' (configurable - see STASH_PATH).
+'~/.playlistsculler.json' (to change see STASH_PATH).
 
+2018-12-27: Operation under Python 3 appears to be much faster.
 """
 
 
@@ -132,7 +133,7 @@ class PlaylistsCuller:
                     if choice and (choice in entries):
                         entries.remove(choice)
                         if len(entries) == 1:
-                            # Try new preferred choice - old wassn't effective:
+                            # Try new alternative - prior didn't last.
                             choice, entries = entries[0], [choice]
                     else:
                         choice = entries.pop(0)
