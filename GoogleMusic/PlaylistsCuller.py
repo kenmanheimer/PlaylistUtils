@@ -220,7 +220,7 @@ class PlaylistsCuller:
         This is optional, just for sanity check."""
         if (not self._songs_by_id):
             blather("Getting songs...")
-            songs = incr_getter(self._api.get_all_songs(incremental=True))
+            songs = incr_getter(self._api.get_all_songs(incremental=False))
             self._songs_by_id = {song[u'id']: song for song in songs}
             blather(" Done.")
 
