@@ -49,7 +49,7 @@ import json
 import sys, os, logging, pprint
 from os import path
 from copy import copy
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class PlaylistsCuller:
     """Cull duplicate track entries from Google Music account's playlists."""
@@ -116,6 +116,7 @@ class PlaylistsCuller:
            in case it's better.
         It's likely there is a right choice, but worth probing for it."""
 
+        before = datetime.now()
         doingpl = doingsong = 0
         playlists = self._playlists
         removed = 0
@@ -148,18 +149,20 @@ class PlaylistsCuller:
                     # specifically want to prefer oldest/most stable one.
                     self.register_chosen(plId, songId, choice)
             batcher.finish_batch()
-        blather("%s playlists processed, %d removals." % (doingpl, removed))
+        blather("%d tracks removed, from %d lists of %d total (%s elapsed)."
+                % (removed, batcher.num_lists_changed, doingpl,
+                   elapsed_since_rounded(before)))
 
     def get_chosen(self, plId, songId):
         "Return preferred track for playlist plId and song songId, or None."
-        if (self._chosen.has_key(plId)
-            and self._chosen[plId].has_key(songId)):
+        if (plId in self._chosen
+            and songId in self._chosen[plId]):
             return self._chosen[plId][songId]
         else:
             return None
     def register_chosen(self, plId, songId, trackId):
         """Register trackId as choice for playlist plId and song songId."""
-        if self._chosen.has_key(plId):
+        if plId in self._chosen:
             self._chosen[plId][songId] = trackId
         else:
             self._chosen[plId] = {songId: trackId}
@@ -203,9 +206,10 @@ class PlaylistsCuller:
                 blather("Discrepancies found,"
                         " proceeding with exhaustive fetch.")
         if needed:
+            before = datetime.now()
             blather("...getting playlists... ")
             self._playlists = self._api.get_all_user_playlist_contents()
-            blather("... Done.")
+            blather("... Done (%s elapsed)." % elapsed_since_rounded(before))
         else:
             blather("Previously fetched data is already up-to-date.")
 
@@ -279,9 +283,15 @@ class BatchedRemover:
         self.entries = []
         self.num_removals = 0
         self.num_fails = 0
+        self._num_lists_changed = 0
+    @property
+    def num_lists_changed(self):
+        "Return the number of lists that have been changed so far."
+        return self._num_lists_changed
     def batch_entries(self, entries):
         if not self.emitted:
             blather("Playlist #%d: %s" % (self.plnum, self.plname))
+            self._num_lists_changed += 1
             self.emitted = True
         blather("%d " % len(entries), nonewline=True)
         pending = self.entries
@@ -358,6 +368,11 @@ def incr_getter(generator):
         sys.stdout.write("%d " % len(got))
         sys.stdout.flush()
     return got
+
+def elapsed_since_rounded(dt):
+    """Return rough datetime delta since datetime DT."""
+    elapsed = datetime.now() - dt
+    return timedelta(seconds=round(elapsed.seconds, 0))
 
 def blather(msg, nonewline=False):
     "Print message if in verbose mode."
