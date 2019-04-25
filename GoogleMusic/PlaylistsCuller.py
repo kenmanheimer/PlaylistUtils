@@ -13,6 +13,18 @@ whim.
 For efficiency, we gather removal requests within a playlist into batches -
 default size 100. The batches do not extend across playlists.
 
+You need to do an oauth login at least on the machine - run this command with
+an instance, following the instructions that get printed:
+
+  >>> instance.establish_oauth()
+
+You also need to set DEVICE_ID to one of your established devices. To identify
+your device ids, using the instance:
+
+  >>> instance.oauth_login("tell me")
+
+You'll see an error message followed by your established device ids.
+
 We indicate progress as it happens by printing the name of the playlist
 currently being culled, if culling is required, and then a progressively
 printed line of numbers, each indicating the number of duplicates being
@@ -38,8 +50,12 @@ mitigate them:
 
 https://stackoverflow.com/questions/29134512/insecureplatformwarning-a-true-sslcontext-object-is-not-available-this-prevent
 
+2019-04-25: Upgrade to recent gmusicapi, and implement basic oauth with even 
+            more basic instructions.
 2018-12-27: Operation under Python 3 appears to be much faster.
 """
+
+DEVICE_ID = "TELL ME"
 
 
 STASH_PATH = "~/.playlistsculler.json"
@@ -72,20 +88,18 @@ class PlaylistsCuller:
     _history = None
     tallies = {}
 
-    def __init__(self, userId=None, password=None):
-        if (not userId):
-            print("UserId: ",)
-            userId = sys.stdin.readline().strip()
-        if (not password):
-            password = getpass("%s password: " % userId)
-        self._userId = userId
+    def __init__(self):
         self._api = api = Mobileclient(debug_logging=True,
                                        validate=True,
                                        verify_ssl=True)
-        if not api.login(userId, password, Mobileclient.FROM_MAC_ADDRESS):
-            api.logger.error("Authentication failed")
-            raise StandardError("Authentication failed")
         self._pldups = {}
+
+    def establish_oauth(self):
+        """ """
+        got = self._api.perform_oauth()
+
+    def oauth_login(self, DEVICE_ID=DEVICE_ID):
+        self._api.oauth_login(DEVICE_ID)
 
     def process(self):
         if DRY_RUN:
@@ -395,12 +409,13 @@ def migrate_version(culler, password):
 
     WON'T WORK when running this module as a script."""
     reload(sys.modules[__name__])
-    newculler = PlaylistsCuller(culler._userId, password)
+    newculler = PlaylistsCuller()
     for field in ['_playlists', '_pldups', '_songs_by_id',
                   '_chosen', '_history']:
         setattr(newculler, field, getattr(culler, field))
     return newculler
 
 if __name__ == "__main__":
-    pls = PlaylistsCuller()    # Will prompt for username and pw
-    pls.process()
+    plc = PlaylistsCuller()    # Will prompt for username and pw
+    plc.oauth_login()
+    plc.process()
