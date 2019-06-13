@@ -6,24 +6,39 @@ We require on gmusicapi being installed in the python running the script:
 
     https://github.com/simon-weber/Unofficial-Google-Music-API
 
-This script is designed to be usable for incremental progress - a new run will
-not have to repeat the work of prior runs, and in fact you can interrupt it at
-whim.
+Authentication
 
-For efficiency, we gather removal requests within a playlist into batches -
-default size 100. The batches do not extend across playlists.
+When you run the script from the shell (`% python scriptname`) oauth
+authentication is taken care of, provided oauth login has been run at least
+once on the host device. (You can see the authentication steps to run from the
+Python prompt by looking at the `if __name__ == "__main__":` block at the bottom
+of the script.) To establish the oauth credentials:
 
-You need to do an oauth login at least on the machine - run this command with
-an instance, following the instructions that get printed:
+  Set the DEVICE_ID to one of your established devices.
+  To identify your device ids, using the instance:
+
+    >>> instance.oauth_login("tell me")
+
+  You'll see an error message followed by your established device ids.
+
+  Then set the script's "DEVICE_ID" variable to an ID you choose.
+  (You have a quota of around 10 ids max, so reusing one is a good idea.)
+
+  Then follow the instructions that get printed when you do:
 
   >>> instance.establish_oauth()
 
-You also need to set DEVICE_ID to one of your established devices. To identify
-your device ids, using the instance:
+  Now you can run the script from the shell or follow the individual steps
+  from the Python prompt.
 
-  >>> instance.oauth_login("tell me")
+Nuances.
 
-You'll see an error message followed by your established device ids.
+The script is designed to be usable for incremental progress - a new run will
+not have to repeat the work of prior runs, and in fact you can interrupt it at
+whim and then resume with a new run.
+
+For efficiency, we gather removal requests within a playlist into batches -
+default size 100. The batches do not extend across playlists.
 
 We indicate progress as it happens by printing the name of the playlist
 currently being culled, if culling is required, and then a progressively
