@@ -10,7 +10,9 @@ We require on gmusicapi being installed in the python running the script:
 
 The script will establish Google account OAuth credentials for you, using a
 device you select from among your Google Play Music devices. The device ID is
-stashed in in the script directory in a file named `.device_id`.
+stashed in in the script directory in a file named `.device_id`. The OAuth
+authentication credentials are stashed by the gmusicapi in your homedir. The
+location is specific to platform type.
 
 ## Operational Nuances
 
