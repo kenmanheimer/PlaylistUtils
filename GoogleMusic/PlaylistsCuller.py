@@ -56,6 +56,7 @@ from gmusicapi import Mobileclient, exceptions
 import json
 import sys
 import os
+import stat
 import pprint
 from os import path
 from datetime import datetime, timedelta
@@ -157,7 +158,10 @@ class PlaylistsCuller:
                 sys.stderr.writelines("Cancelled.\n\n")
                 return None
             devid_file = open(devid_file_path, 'w')
-            devid_file.write(device_id + "\n")
+            # Before adding device ID, restrict access to only the owner:
+            os.chmod(devid_file_path, stat.S_IREAD | stat.S_IWRITE)
+            devid_file.writelines(device_id + "\n")
+            devid_file.close()
             sys.stderr.writelines("\nUsing device id: %s\n" % device_id)
             self.establish_oauth()
             return device_id
