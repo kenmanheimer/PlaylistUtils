@@ -54,7 +54,7 @@ https://stackoverflow.com/questions/29134512/insecureplatformwarning-a-true-sslc
 2018-12-27: Operation under Python 3 appears to be much faster.
 """
 
-from gmusicapi import Mobileclient, exceptions
+import gmusicapi
 import json
 import sys
 import os
@@ -90,13 +90,11 @@ class PlaylistsCuller:
     tallies = {}
 
     def __init__(self):
-        self._api = Mobileclient(debug_logging=True,
-                                 validate=True,
-                                 verify_ssl=True)
-        device_id = self.establish_device_id()
+        self._api = gmusicapi.Mobileclient(debug_logging=True,
+                                           validate=True,
+                                           verify_ssl=True)
+        device_id = self.establish_device_id_and_oauth()
         if device_id is not None:
-            if not os.path.exists(self.oauth_filepath()):
-                device_id = self.establish_device_id()
             self._api.oauth_login(device_id)
         self._pldups = {}
 
@@ -111,8 +109,8 @@ class PlaylistsCuller:
     def oauth_filepath(self):
         return self._api.OAUTH_FILEPATH
 
-    def establish_device_id(self):
-        """Get device ID according to stashed or new setting and do OAuth login.
+    def establish_device_id_and_oauth(self):
+        """Get device ID per stashed or new setting and do OAuth login.
 
         The established value is situated in the script directory with
         filename DEVICE_ID_FILE.
@@ -122,31 +120,69 @@ class PlaylistsCuller:
         and used.
         """
 
+        # We provide for many circumstances, including:
+        #
+        # + Properly established credentials and device ID
+        #   - ready!
+        # + No established credentials or selected device ID
+        #   - get both
+        # + Established credentials but no device ID
+        #   - get device ID
+        # + Established credentials but no devices associated with the account
+        #   - advise to establish a device and then run the script again
+        # + Device ID but no established credentials (eg, credentials removed)
+        #   - get both, disregarding currently selected device ID
+        #
+        # Cumulative permutations are also accounted for, like no established
+        # credentials and no devices associated with the selected account
+
         moddir = os.path.dirname(sys.modules[__name__].__file__)
         devid_file_path = os.path.join(moddir, DEVICE_ID_FILE_NAME)
+        did_oauth_establish = False
+        api = self._api
+
+        if (not os.path.exists(self.oauth_filepath())
+                and os.path.exists(devid_file_path)):
+            # We're lacking the credentials - must reinit device ID.
+            try:
+                os.rename(devid_file_path, devid_file_path + ".aside")
+            except IOError:
+                try:
+                    os.remove(devid_file_path)
+                except IOError:
+                    pass
         try:
             devid_file = open(devid_file_path, 'r')
             device_id = devid_file.read().strip()
             devid_file.close()
             return device_id
         except IOError:
-            api = self._api
             try:
                 api.oauth_login("tell me")
                 if not api.is_authenticated():
+                    # We probably lack the credentials and definitely lack
+                    # the device ID. Do the credentials establishment and
+                    # arrange to continue establishing the device ID:
                     self.establish_oauth()
-                # oauth_login succeeded! We don't have the device id, but don't
-                # need it this time.
-                return
-            except exceptions.NotLoggedIn:
+                    did_oauth_establish = True
+                    raise gmusicapi.exceptions.NotLoggedIn
+            except gmusicapi.exceptions.NotLoggedIn:
                 try:
                     api.oauth_login("tell me")
-                except exceptions.InvalidDeviceId:
+                except gmusicapi.exceptions.InvalidDeviceId:
                     ids = sys.exc_info()[1].valid_device_ids
-            except exceptions.InvalidDeviceId:
+            except gmusicapi.exceptions.InvalidDeviceId:
                 ids = sys.exc_info()[1].valid_device_ids
             sys.stderr.writelines("Device ID unselected for this host...\n\n")
-            if ids:
+            if not ids:
+                sys.stderr.writelines(
+                    "No device IDs are associated with your Google Play Music"
+                    " account.\n"
+                    "To use this script you must first establish Google Play\n"
+                    "Music on a mobile device (or the web?). Then run this\n"
+                    "again to then select an established device ID.\n")
+                return None
+            else:
                 sys.stderr.writelines("Here are your current devices: \n")
                 for i in range(len(ids)):
                     print("%i: %s" % (i, ids[i]))
@@ -165,7 +201,8 @@ class PlaylistsCuller:
             devid_file.writelines(device_id + "\n")
             devid_file.close()
             sys.stderr.writelines("\nUsing device id: %s\n" % device_id)
-            self.establish_oauth()
+            if not did_oauth_establish:
+                self.establish_oauth()
             return device_id
 
     def process(self):
