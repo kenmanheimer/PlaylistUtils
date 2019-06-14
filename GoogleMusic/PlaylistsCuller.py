@@ -6,32 +6,13 @@ We require on gmusicapi being installed in the python running the script:
 
     https://github.com/simon-weber/Unofficial-Google-Music-API
 
-Authentication
+## Authentication
 
-When you run the script from the shell (`% python scriptname`) oauth
-authentication is taken care of, provided oauth login has been run at least
-once on the host device. (You can see the authentication steps to run from the
-Python prompt by looking at the `if __name__ == "__main__":` block at the bottom
-of the script.) To establish the oauth credentials:
+The script will establish Google account OAuth credentials for you, using a
+device you select from among your Google Play Music devices. The device ID is
+stashed in in the script directory in a file named `.device_id`.
 
-  Set the DEVICE_ID to one of your established devices.
-  To identify your device ids, using the instance:
-
-    >>> instance.oauth_login("tell me")
-
-  You'll see an error message followed by your established device ids.
-
-  Then set the script's "DEVICE_ID" variable to an ID you choose.
-  (You have a quota of around 10 ids max, so reusing one is a good idea.)
-
-  Then follow the instructions that get printed when you do:
-
-  >>> instance.establish_oauth()
-
-  Now you can run the script from the shell or follow the individual steps
-  from the Python prompt.
-
-Nuances.
+## Operational Nuances
 
 The script is designed to be usable for incremental progress - a new run will
 not have to repeat the work of prior runs, and in fact you can interrupt it at
@@ -65,12 +46,19 @@ mitigate them:
 
 https://stackoverflow.com/questions/29134512/insecureplatformwarning-a-true-sslcontext-object-is-not-available-this-prevent
 
-2019-04-25: Upgrade to recent gmusicapi, and implement basic oauth with even 
+2019-06-14: Automate OAuth setup, with user input.
+2019-04-25: Upgrade to recent gmusicapi, and implement basic oauth with even
             more basic instructions.
 2018-12-27: Operation under Python 3 appears to be much faster.
 """
 
-DEVICE_ID = "TELL ME"
+from gmusicapi import Mobileclient, exceptions
+import json
+import sys
+import os
+import pprint
+from os import path
+from datetime import datetime, timedelta
 
 
 STASH_PATH = "~/.playlistsculler.json"
@@ -81,19 +69,14 @@ VERBOSE = True
 # DRY_RUN True means prospective playlist removals are only reported, not done.
 DRY_RUN = False
 
-from gmusicapi import Mobileclient
-from getpass import getpass
-import json
-import sys, os, logging, pprint
-from os import path
-from copy import copy
-from datetime import datetime, timedelta
+# DEVICE_ID_FILE_NAME is situated in the script directory.
+DEVICE_ID_FILE_NAME = ".device_id"
+
 
 class PlaylistsCuller:
     """Cull duplicate track entries from Google Music account's playlists."""
 
     _api = None                 # The GMusic API instance
-    _userId = None
     _playlists = None           # _api.get_all_user_playlist_contents() result
     _plnames_by_id = None       # {playlistId: playlist_name}
     _pldups = None              # {playlistId: {songId: [plEntryId, ...]}}
@@ -104,17 +87,80 @@ class PlaylistsCuller:
     tallies = {}
 
     def __init__(self):
-        self._api = api = Mobileclient(debug_logging=True,
-                                       validate=True,
-                                       verify_ssl=True)
+        self._api = Mobileclient(debug_logging=True,
+                                 validate=True,
+                                 verify_ssl=True)
+        device_id = self.establish_device_id()
+        if device_id is not None:
+            if not os.path.exists(self.oauth_filepath()):
+                device_id = self.establish_device_id()
+            self._api.oauth_login(device_id)
         self._pldups = {}
 
-    def establish_oauth(self):
-        """ """
-        got = self._api.perform_oauth()
+    def is_authenticated(self):
+        return self._api.is_authenticated()
 
-    def oauth_login(self, DEVICE_ID=DEVICE_ID):
-        self._api.oauth_login(DEVICE_ID)
+    def establish_oauth(self):
+        sys.stderr.writelines(
+            "\nFollow these instructions to do an OAuth login:\n")
+        self._api.perform_oauth()
+
+    def oauth_filepath(self):
+        return self._api.OAUTH_FILEPATH
+
+    def establish_device_id(self):
+        """Get device ID according to stashed or new setting and do OAuth login.
+
+        The established value is situated in the script directory with
+        filename DEVICE_ID_FILE.
+
+        When there is no established setting the user is presented with their
+        current device IDs and offered the option to enter one to be stashed
+        and used.
+        """
+
+        moddir = os.path.dirname(sys.modules[__name__].__file__)
+        devid_file_path = os.path.join(moddir, DEVICE_ID_FILE_NAME)
+        try:
+            devid_file = open(devid_file_path, 'r')
+            device_id = devid_file.read().strip()
+            devid_file.close()
+            return device_id
+        except IOError:
+            api = self._api
+            try:
+                api.oauth_login("tell me")
+                if not api.is_authenticated():
+                    self.establish_oauth()
+                # oauth_login succeeded! We don't have the device id, but don't
+                # need it this time.
+                return
+            except exceptions.NotLoggedIn:
+                try:
+                    api.oauth_login("tell me")
+                except exceptions.InvalidDeviceId:
+                    ids = sys.exc_info()[1].valid_device_ids
+            except exceptions.InvalidDeviceId:
+                ids = sys.exc_info()[1].valid_device_ids
+            sys.stderr.writelines("Device ID unselected for this host...\n\n")
+            if ids:
+                sys.stderr.writelines("Here are your current devices: \n")
+                for i in range(len(ids)):
+                    print("%i: %s" % (i, ids[i]))
+            sys.stderr.write("Choose the number of a device ID to use"
+                             " (or anything else to cancel): ")
+            sys.stderr.flush()
+            choice = sys.stdin.readline().strip()
+            try:
+                device_id = ids[int(choice)]
+            except ValueError:
+                sys.stderr.writelines("Cancelled.\n\n")
+                return None
+            devid_file = open(devid_file_path, 'w')
+            devid_file.write(device_id + "\n")
+            sys.stderr.writelines("\nUsing device id: %s\n" % device_id)
+            self.establish_oauth()
+            return device_id
 
     def process(self):
         if DRY_RUN:
@@ -154,7 +200,6 @@ class PlaylistsCuller:
 
         before = datetime.now()
         doingpl = doingsong = 0
-        playlists = self._playlists
         removed = 0
         for plId, pldups in self._pldups.items():
             doingpl += 1
@@ -176,7 +221,7 @@ class PlaylistsCuller:
                     removed += len(entries)
                     batcher.batch_entries(entries)
                     # Revise our records assuming the removals succeeded:
-                    #XXX self._pldups[plId][songId] = [choice]
+                    # XXX self._pldups[plId][songId] = [choice]
                 elif entries:
                     choice = entries[0]
                 if choice:
@@ -192,10 +237,11 @@ class PlaylistsCuller:
     def get_chosen(self, plId, songId):
         "Return preferred track for playlist plId and song songId, or None."
         if (plId in self._chosen
-            and songId in self._chosen[plId]):
+                and songId in self._chosen[plId]):
             return self._chosen[plId][songId]
         else:
             return None
+
     def register_chosen(self, plId, songId, trackId):
         """Register trackId as choice for playlist plId and song songId."""
         if plId in self._chosen:
@@ -208,6 +254,7 @@ class PlaylistsCuller:
                                                         'history': []}
         self._history = fetched['history']
         self._chosen = fetched['chosen']
+
     def store_stash(self):
         self._history.insert(0, (str(datetime.now()), self.tallies))
         Stasher(STASH_PATH).store_stash({'chosen': self._chosen,
@@ -308,6 +355,7 @@ class PlaylistsCuller:
             for trId in apl_dups.keys():
                 assert trId in self._songs_by_id
 
+
 class BatchedRemover:
     """Batch playlist entry removal requests to reduce transactions."""
     def __init__(self, api, plnum, plname, batch_size=DEFAULT_BATCH_SIZE):
@@ -320,10 +368,12 @@ class BatchedRemover:
         self.num_removals = 0
         self.num_fails = 0
         self._num_lists_changed = 0
+
     @property
     def num_lists_changed(self):
         "Return the number of lists that have been changed so far."
         return self._num_lists_changed
+
     def batch_entries(self, entries):
         if not self.emitted:
             blather("Playlist #%d: %s" % (self.plnum, self.plname))
@@ -338,6 +388,7 @@ class BatchedRemover:
             self.do_removals(pending)
         else:
             self.entries = pending
+
     def finish_batch(self):
         pendings, self.entries = self.entries, []
         self.do_removals(pendings)
@@ -346,6 +397,7 @@ class BatchedRemover:
             if self.num_fails:
                 message += format(", %d fails" % self.num_fails)
             blather(message)
+
     def do_removals(self, entries):
         if entries:
             eqls = "= %d" % len(entries)
@@ -367,14 +419,17 @@ class BatchedRemover:
             if self.entries:
                 blather("%d " % len(self.entries), nonewline=True)
 
+
 class Stasher:
     """Provide JSON externalization of a data structure to a location."""
     _stash_path = None
+
     def __init__(self, stash_path):
         """Stash location can include '~' and var references.
 
         Invalid paths will not be noticed until a write is attempted."""
         self._stash_path = path.expanduser(path.expandvars(stash_path))
+
     def fetch_stash(self):
         """Return reconstituted data structure, or {} if none yet existing."""
         got = {}
@@ -385,6 +440,7 @@ class Stasher:
         finally:
             sf and sf.close()
             return got
+
     def store_stash(self, data):
         """Try to externalize the data in the stash path.
 
@@ -396,6 +452,7 @@ class Stasher:
         finally:
             sf and sf.close()
 
+
 def incr_getter(generator):
     got = []
     for batch in generator:
@@ -405,10 +462,12 @@ def incr_getter(generator):
         sys.stdout.flush()
     return got
 
+
 def elapsed_since_rounded(dt):
     """Return rough datetime delta since datetime DT."""
     elapsed = datetime.now() - dt
     return timedelta(seconds=round(elapsed.seconds, 0))
+
 
 def blather(msg, nonewline=False):
     "Print message if in verbose mode."
@@ -419,10 +478,15 @@ def blather(msg, nonewline=False):
         else:
             print(msg)
 
+
 def migrate_version(culler, password):
     """Return a new culler, from the reloaded module, with culler's data.
 
     WON'T WORK when running this module as a script."""
+    try:
+        from imp import reload
+    except ImportError:
+        from importlib import reload
     reload(sys.modules[__name__])
     newculler = PlaylistsCuller()
     for field in ['_playlists', '_pldups', '_songs_by_id',
@@ -430,7 +494,8 @@ def migrate_version(culler, password):
         setattr(newculler, field, getattr(culler, field))
     return newculler
 
+
 if __name__ == "__main__":
-    plc = PlaylistsCuller()    # Will prompt for username and pw
-    plc.oauth_login()
-    plc.process()
+    plc = PlaylistsCuller()
+    if plc.is_authenticated():
+        plc.process()
