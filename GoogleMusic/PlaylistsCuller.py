@@ -2,23 +2,33 @@
 
 """Remove duplicate song entries in all your GMusic playlists.
 
-We require on gmusicapi being installed in the python running the script:
+Depends on gmusicapi:
 
     https://github.com/simon-weber/Unofficial-Google-Music-API
 
+## Background
+
+For an unknown reason Google Music Manager sporadically created duplicate
+tracks on my playlists. When I first got this script working all my playlists
+were bulked up to 8 to 10 times their unique-tracks size. (There were far more
+than 100,000 duplicates.) In the ensuing years I have not been able to resolve
+the problem, even with Google's support attempting to help, so I just run this
+script every so often - once a week or so - and avoid having too many
+duplicates.
+
 ## Authentication
 
-The script will establish Google account OAuth credentials for you, using a
-device you select from among your Google Play Music devices. The device ID is
-stashed in in the script directory in a file named `.device_id`. The OAuth
-authentication credentials are stashed by the gmusicapi in your homedir. The
-location is specific to platform type.
+The script will establish Google account OAuth credentials for you, and have
+you select a device from among your Google Play Music authorized devices. The
+device ID is stashed in in the script directory in a file named
+`.device_id`. The OAuth authentication credentials are stashed by the gmusicapi
+in your homedir, in a location that depends on platform type.
 
 ## Operational Nuances
 
-The script is designed to be usable for incremental progress - a new run will
-not have to repeat the work of prior runs, and in fact you can interrupt it at
-whim and then resume with a new run.
+The script is designed for incremental progress - a new run will not have to
+repeat the work of prior runs, and in fact you can interrupt it at whim and
+then resume with a new run to continue progressing.
 
 For efficiency, we gather removal requests within a playlist into batches -
 default size 100. The batches do not extend across playlists.
