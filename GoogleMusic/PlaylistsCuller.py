@@ -8,13 +8,12 @@ Depends on gmusicapi:
 
 ## Background
 
-For an unknown reason Google Music Manager sporadically created duplicate
-tracks on my playlists. When I first got this script working all my playlists
-were bulked up to 8 to 10 times their unique-tracks size. (There were far more
-than 100,000 duplicates.) In the ensuing years I have not been able to resolve
-the problem, even with Google's support attempting to help, so I just run this
-script every so often - once a week or so - and avoid having too many
-duplicates.
+For an unknown reason Google Music Manager sporadically duplicates tracks on my
+playlists. When I first got this script working, far more than 100,000
+duplicates had accumulated. I still haven't found the solution to the problem
+(even with help from Google support). As a workaround, I run this script every
+so often - at least once a week - to clear out the duplicates that accumulated
+in the interim.
 
 ## Authentication
 
